@@ -68,16 +68,6 @@ export default function MediaBin() {
           </div>
         </div>
       ))}
-
-      <div className="ed-panel-title">Insert</div>
-      <div className="px-2 pb-3 d-grid gap-2">
-        <button className="ed-btn" onClick={() => ed.addTextOverlay(ed.playhead)}>
-          T Add text at playhead
-        </button>
-        <button className="ed-btn" onClick={() => ed.addBlurOverlay(ed.playhead)}>
-          ◍ Add blur region
-        </button>
-      </div>
     </aside>
   );
 }

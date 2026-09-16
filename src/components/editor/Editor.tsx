@@ -92,7 +92,6 @@ function Shell() {
           <span className="dot" />
           Free Video Editor
         </div>
-        <span style={{ fontSize: 12, color: "var(--ed-muted)" }}>Powered by Nirvaan Technologies Pvt Ltd</span>
         <div className="ms-auto" style={{ fontSize: 11, color: "var(--ed-muted)" }}>
           Space play/pause · S split · ←/→ step frame · Del remove clip
         </div>
