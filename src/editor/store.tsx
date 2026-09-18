@@ -16,15 +16,75 @@ type Selection = { kind: "clip"; id: string } | { kind: "overlay"; id: string } 
 type Ctx = ReturnType<typeof useEditorState>;
 const EditorCtx = createContext<Ctx | null>(null);
 
-function newTrack(name: string): Track {
-  return { id: uid(), name, muted: false, hidden: false, clips: [] };
+function newVideoTrack(name: string): Track {
+  return { id: uid(), name, kind: "video", muted: false, hidden: false, clips: [] };
+}
+
+function newAudioTrack(name: string): Track {
+  return { id: uid(), name, kind: "audio", muted: false, hidden: false, clips: [] };
+}
+
+function readMediaMeta(file: File, url: string) {
+  if (file.type.startsWith("video")) {
+    return new Promise<{ kind: MediaAsset["kind"]; d: number; w: number; h: number; thumb?: string | undefined }>((resolve) => {
+      const v = document.createElement("video");
+      v.preload = "metadata";
+      v.muted = true;
+      v.src = url;
+      v.onloadeddata = () => {
+        v.currentTime = Math.min(0.2, (v.duration || 1) / 2);
+      };
+      v.onseeked = () => {
+        let thumb: string | undefined;
+        try {
+          const c = document.createElement("canvas");
+          c.width = 160;
+          c.height = 90;
+          const cx = c.getContext("2d");
+          cx?.drawImage(v, 0, 0, 160, 90);
+          thumb = c.toDataURL("image/jpeg", 0.6);
+        } catch {
+          /* ignore */
+        }
+        resolve({ kind: "video", d: v.duration || 0, w: v.videoWidth, h: v.videoHeight, thumb });
+      };
+      v.onerror = () => resolve({ kind: "video", d: 0, w: 0, h: 0 });
+    });
+  }
+
+  if (file.type.startsWith("audio") || /\.mp3$/i.test(file.name)) {
+    return new Promise<{ kind: MediaAsset["kind"]; d: number; w: number; h: number; thumb?: string | undefined }>((resolve) => {
+      const a = document.createElement("audio");
+      a.preload = "metadata";
+      a.src = url;
+      const done = () => resolve({ kind: "audio", d: a.duration || 0, w: 0, h: 0 });
+      a.onloadedmetadata = done;
+      a.onerror = done;
+    });
+  }
+
+  if (file.type.startsWith("image")) {
+    return new Promise<{ kind: MediaAsset["kind"]; d: number; w: number; h: number; thumb?: string | undefined }>((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ kind: "image", d: 4, w: img.naturalWidth, h: img.naturalHeight, thumb: url });
+      img.onerror = () => resolve({ kind: "image", d: 4, w: 0, h: 0, thumb: url });
+      img.src = url;
+    });
+  }
+
+  return Promise.resolve({ kind: "video" as const, d: 0, w: 0, h: 0 });
+}
+
+function pickDefaultTrack(ts: Track[], kind: MediaAsset["kind"]) {
+  if (kind === "audio") return ts.find((t) => t.kind === "audio")?.id ?? ts[0]?.id;
+  return ts.find((t) => t.kind === "video")?.id ?? ts[0]?.id;
 }
 
 type Snapshot = { tracks: Track[]; overlays: Overlay[] };
 
 function useEditorState() {
   const [media, setMedia] = useState<MediaAsset[]>([]);
-  const [tracks, setTracksState] = useState<Track[]>([newTrack("Video 1"), newTrack("Video 2")]);
+  const [tracks, setTracksState] = useState<Track[]>([newVideoTrack("Video"), newAudioTrack("Audio 1")]);
   const [overlays, setOverlaysState] = useState<Overlay[]>([]);
 
   // ---- undo / redo history -------------------------------------------------
@@ -90,11 +150,11 @@ function useEditorState() {
 
   const [zoom, setZoom] = useState(80); // px per second
   const [exportSettings, setExportSettings] = useState<ExportSettings>({
-    container: "webm",
+    container: "mp4",
     fps: 30,
     width: 1280,
     height: 720,
-    bitrateMbps: 8,
+    bitrateMbps: 4,
   });
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -121,36 +181,17 @@ function useEditorState() {
   const addMedia = useCallback(async (files: FileList | File[]) => {
     const added: MediaAsset[] = [];
     for (const file of Array.from(files)) {
-      if (!file.type.startsWith("video")) continue;
+      if (!file.type.startsWith("video") && !file.type.startsWith("audio") && !file.type.startsWith("image") && !/\.mp3$/i.test(file.name)) {
+        continue;
+      }
       const url = URL.createObjectURL(file);
-      const meta = await new Promise<{ d: number; w: number; h: number; thumb?: string | undefined }>((resolve) => {
-        const v = document.createElement("video");
-        v.preload = "metadata";
-        v.muted = true;
-        v.src = url;
-        v.onloadeddata = () => {
-          v.currentTime = Math.min(0.2, (v.duration || 1) / 2);
-        };
-        v.onseeked = () => {
-          let thumb: string | undefined;
-          try {
-            const c = document.createElement("canvas");
-            c.width = 160;
-            c.height = 90;
-            const cx = c.getContext("2d");
-            cx?.drawImage(v, 0, 0, 160, 90);
-            thumb = c.toDataURL("image/jpeg", 0.6);
-          } catch {
-            /* ignore */
-          }
-          resolve({ d: v.duration || 0, w: v.videoWidth, h: v.videoHeight, thumb });
-        };
-        v.onerror = () => resolve({ d: 0, w: 0, h: 0 });
-      });
+      const meta = await readMediaMeta(file, url);
       added.push({
         id: uid(),
         name: file.name,
         url,
+        kind: meta.kind,
+        mime: file.type,
         duration: meta.d,
         width: meta.w,
         height: meta.h,
@@ -163,9 +204,10 @@ function useEditorState() {
 
   const addClip = useCallback((asset: MediaAsset, trackId?: string, at?: number) => {
     setTracks((ts) => {
+      const targetId = trackId ?? pickDefaultTrack(ts, asset.kind);
       const idx = Math.max(
         0,
-        ts.findIndex((t) => t.id === (trackId ?? ts[0]?.id)),
+        ts.findIndex((t) => t.id === (targetId ?? ts[0]?.id)),
       );
       return ts.map((t, i) => {
         if (i !== idx) return t;
@@ -185,6 +227,8 @@ function useEditorState() {
           cropTop: 0,
           cropRight: 0,
           cropBottom: 0,
+          transition: asset.kind === "image" ? "fade" : "none",
+          transitionDuration: asset.kind === "image" ? 0.6 : 0,
         };
         return { ...t, clips: [...t.clips, clip] };
       });
@@ -383,7 +427,11 @@ function useEditorState() {
     );
   }, []);
 
-  const addTrack = useCallback(() => setTracks((ts) => [...ts, newTrack(`Video ${ts.length + 1}`)]), []);
+  const addTrack = useCallback(() => setTracks((ts) => [...ts, newVideoTrack(`Video ${ts.filter((t) => t.kind === "video").length + 1}`)]), []);
+  const addAudioTrack = useCallback(
+    () => setTracks((ts) => [...ts, newAudioTrack(`Audio ${ts.filter((t) => t.kind === "audio").length + 1}`)]),
+    [],
+  );
   const removeTrack = useCallback(
     (id: string) => setTracks((ts) => (ts.length <= 1 ? ts : ts.filter((t) => t.id !== id))),
     [],
@@ -429,11 +477,83 @@ function useEditorState() {
         w: 0.3,
         h: 0.25,
         amount: 18,
+        color: "#000000",
+        opacity: 0.2,
       };
       setOverlays((os) => [...os, o]);
       setSelection({ kind: "overlay", id: o.id });
     },
     [duration],
+  );
+
+  const addShapeOverlay = useCallback(
+    (at: number, shape: "rect" | "circle" | "line" | "arrow" = "rect") => {
+      const o: Overlay = {
+        id: uid(),
+        type: "shape",
+        shape,
+        start: at,
+        end: at + Math.min(4, Math.max(2, duration - at || 4)),
+        x: 0.25,
+        y: 0.25,
+        w: 0.35,
+        h: 0.22,
+        color: "#ffdd55",
+        fill: shape === "rect" || shape === "circle",
+        fillOpacity: 0.18,
+        strokeWidth: 4,
+      };
+      setOverlays((os) => [...os, o]);
+      setSelection({ kind: "overlay", id: o.id });
+    },
+    [duration],
+  );
+
+  const addZoomOverlay = useCallback(
+    (at: number) => {
+      const o: Overlay = {
+        id: uid(),
+        type: "zoom",
+        start: at,
+        end: at + Math.min(3, Math.max(1.5, duration - at || 3)),
+        x: 0.3,
+        y: 0.2,
+        w: 0.4,
+        h: 0.4,
+        scale: 1.8,
+        mode: "focus",
+        smoothness: 0.75,
+        zoomInDuration: 0.8,
+        zoomOutDuration: 0.8,
+      };
+      setOverlays((os) => [...os, o]);
+      setSelection({ kind: "overlay", id: o.id });
+    },
+    [duration],
+  );
+
+  const addMediaOverlay = useCallback(
+    (mediaId: string, at: number) => {
+      const asset = media.find((m) => m.id === mediaId);
+      if (!asset || asset.kind === "audio") return;
+      const d = Math.max(1.5, Math.min(6, asset.duration || 4));
+      const o: Overlay = {
+        id: uid(),
+        type: "media",
+        mediaId: asset.id,
+        start: at,
+        end: at + Math.min(d, Math.max(1, duration - at || d)),
+        x: 0.68,
+        y: 0.62,
+        w: 0.26,
+        h: 0.26,
+        opacity: 1,
+        borderRadius: 10,
+      };
+      setOverlays((os) => [...os, o]);
+      setSelection({ kind: "overlay", id: o.id });
+    },
+    [duration, media],
   );
 
   const updateOverlay = useCallback((id: string, patch: Partial<Overlay>) => {
@@ -497,10 +617,14 @@ function useEditorState() {
     rippleTrack,
     applyRange,
     addTrack,
+    addAudioTrack,
     removeTrack,
     updateTrack,
     addTextOverlay,
     addBlurOverlay,
+    addShapeOverlay,
+    addZoomOverlay,
+    addMediaOverlay,
     updateOverlay,
     removeOverlay,
   };

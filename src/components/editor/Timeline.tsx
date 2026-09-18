@@ -30,6 +30,7 @@ const tickLabel = (t: number) => {
 export default function Timeline() {
   const ed = useEditor();
   const { tracks, zoom, duration, playhead } = ed;
+  const mediaById = new Map(ed.media.map((m) => [m.id, m]));
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -136,7 +137,10 @@ export default function Timeline() {
           🗑 Delete
         </button>
         <button className="ed-btn" onClick={ed.addTrack}>
-          ＋ Track
+          ＋ Video Track
+        </button>
+        <button className="ed-btn" onClick={ed.addAudioTrack}>
+          ♫ Audio Track
         </button>
         <div className="ms-auto d-flex align-items-center gap-2">
           <button className="ed-btn" onClick={() => ed.setZoom(Math.max(20, zoom - 20))} title="Zoom out">−</button>
@@ -174,14 +178,6 @@ export default function Timeline() {
                   <button
                     className="ed-btn"
                     style={{ padding: "2px 6px" }}
-                    title="Mute track"
-                    onClick={() => ed.updateTrack(track.id, { muted: !track.muted })}
-                  >
-                    {track.muted ? "🔇" : "🔊"}
-                  </button>
-                  <button
-                    className="ed-btn"
-                    style={{ padding: "2px 6px" }}
                     title="Hide track"
                     onClick={() => ed.updateTrack(track.id, { hidden: !track.hidden })}
                   >
@@ -196,12 +192,11 @@ export default function Timeline() {
                     ⇤
                   </button>
                   <button
-                    className="ed-btn danger"
+                    className="ed-btn"
                     style={{ padding: "2px 6px" }}
-                    title="Remove track"
-                    onClick={() => ed.removeTrack(track.id)}
+                    title={track.kind === "audio" ? "Audio track" : "Video track"}
                   >
-                    ✕
+                    {track.kind === "audio" ? "♫" : "🎬"}
                   </button>
                 </div>
               </div>
@@ -242,7 +237,7 @@ export default function Timeline() {
                 {[...track.clips].sort((a, b) => a.start - b.start).map((clip) => (
                   <div
                     key={clip.id}
-                    className={`ed-clip ${ed.selection?.kind === "clip" && ed.selection.id === clip.id ? "selected" : ""}`}
+                    className={`ed-clip ${mediaById.get(clip.mediaId)?.kind === "audio" ? "audio" : mediaById.get(clip.mediaId)?.kind === "image" ? "image" : "video"} ${ed.selection?.kind === "clip" && ed.selection.id === clip.id ? "selected" : ""}`}
                     style={{
                       left: clip.start * zoom,
                       // Exact timeline width is important: a minimum visual width
@@ -278,6 +273,7 @@ export default function Timeline() {
                   >
                     <div className="thumbs" />
                     <div className="label">
+                      {mediaById.get(clip.mediaId)?.kind === "audio" ? "♫ " : mediaById.get(clip.mediaId)?.kind === "image" ? "🖼 " : "🎬 "}
                       {clip.muted || track.muted ? "🔇 " : ""}
                       {clip.name} · {clipDuration(clip).toFixed(2)}s
                     </div>
@@ -348,7 +344,15 @@ export default function Timeline() {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {o.type === "text" ? `T · ${o.text}` : "Blur region"}
+                  {o.type === "text"
+                    ? `T · ${o.text}`
+                    : o.type === "blur"
+                      ? "Blur region"
+                      : o.type === "shape"
+                        ? `${o.shape.toUpperCase()} shape`
+                        : o.type === "zoom"
+                          ? `Zoom x${o.scale.toFixed(1)}`
+                          : "PIP media"}
                 </div>
               ))}
             </div>

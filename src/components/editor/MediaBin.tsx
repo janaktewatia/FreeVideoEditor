@@ -26,18 +26,18 @@ export default function MediaBin() {
           if (e.dataTransfer.files.length) void handleFiles(e.dataTransfer.files);
         }}
       >
-        {busy ? "Importing…" : "⬆ Drop video files here or click to import"}
+        {busy ? "Importing..." : "⬆ Drop video, MP3/audio or photos here (or click to import)"}
       </div>
       <input
         ref={inputRef}
         type="file"
-        accept="video/*"
+        accept="video/*,audio/*,.mp3,image/*"
         multiple
         hidden
         onChange={(e) => e.target.files && void handleFiles(e.target.files)}
       />
 
-      {ed.media.length === 0 && <div className="ed-empty">No media yet. Import a clip to start editing.</div>}
+      {ed.media.length === 0 && <div className="ed-empty">No media yet. Import video, music or photos to start editing.</div>}
 
       {ed.media.map((m) => (
         <div
@@ -63,8 +63,22 @@ export default function MediaBin() {
           <div style={{ minWidth: 0 }}>
             <div className="text-truncate">{m.name}</div>
             <div style={{ color: "var(--ed-muted)", fontSize: 11 }}>
-              {m.duration.toFixed(1)}s · {m.width}×{m.height}
+              {m.kind.toUpperCase()} · {m.duration.toFixed(1)}s
+              {m.width > 0 && m.height > 0 ? ` · ${m.width}x${m.height}` : ""}
             </div>
+            {m.kind !== "audio" && (
+              <button
+                className="ed-btn"
+                style={{ padding: "2px 6px", fontSize: 11, marginTop: 4 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  ed.addMediaOverlay(m.id, ed.playhead);
+                }}
+                title="Add as PIP overlay"
+              >
+                Add as PIP
+              </button>
+            )}
           </div>
         </div>
       ))}

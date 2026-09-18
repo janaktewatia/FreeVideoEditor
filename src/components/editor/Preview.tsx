@@ -32,7 +32,7 @@ export default function Preview() {
 
       // The engine returns the time derived from the playing video element,
       // which keeps the playhead locked to real decoded playback.
-      const synced = engine.sync(tracks, media, time, playing);
+      const synced = engine.sync(tracks, media, overlays, time, playing);
       if (playing) {
         // Never move backwards: that is what made a second repeat.
         time = Math.max(time - 0.02, Math.min(synced, time + 0.25));
@@ -105,7 +105,16 @@ export default function Preview() {
                 top: `${o.y * 100}%`,
                 width: `${o.w * 100}%`,
                 height: `${o.h * 100}%`,
-                borderColor: o.type === "blur" ? "rgba(255,107,107,.9)" : undefined,
+                borderColor:
+                  o.type === "blur"
+                    ? "rgba(255,107,107,.9)"
+                    : o.type === "shape"
+                      ? "rgba(255,221,85,.95)"
+                      : o.type === "zoom"
+                        ? "rgba(93,199,150,.95)"
+                        : o.type === "media"
+                          ? "rgba(112,185,255,.95)"
+                          : undefined,
               }}
               onPointerDown={(e) => {
                 e.preventDefault();

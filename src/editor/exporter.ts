@@ -45,7 +45,7 @@ function seekTo(el: HTMLVideoElement, t: number) {
   });
 }
 
-async function waitReady(el: HTMLVideoElement) {
+async function waitReady(el: HTMLMediaElement) {
   if (el.readyState >= 2) return;
   await new Promise<void>((resolve) => {
     const on = () => {
@@ -176,7 +176,9 @@ export async function exportTimeline(opts: ExportOpts): Promise<{ blob: Blob; co
 
   const byId = new Map(opts.media.map((m) => [m.id, m]));
   for (const m of opts.media) {
-    const el = engine.get(m);
+    const node = engine.get(m);
+    if (m.kind === "image") continue;
+    const el = node as HTMLMediaElement;
     el.pause();
     el.muted = true;
     await waitReady(el);
@@ -186,11 +188,11 @@ export async function exportTimeline(opts: ExportOpts): Promise<{ blob: Blob; co
   for (let i = 0; i < totalFrames; i++) {
     const t = i * frameDur;
     // Seek the clip that is visible at this exact timeline second.
-    const active = engine.activeClip(opts.tracks, t);
+    const active = engine.activeVisualClip(opts.tracks, opts.media, t);
     if (active) {
       const asset = byId.get(active.clip.mediaId);
-      if (asset) {
-        const el = engine.get(asset);
+      if (asset && asset.kind === "video") {
+        const el = engine.get(asset) as HTMLVideoElement;
         const src = Math.min(
           Math.max(active.clip.in + (t - active.clip.start), 0),
           Math.max((asset.duration || 0) - 0.02, 0),

@@ -69,6 +69,26 @@ function Transport({ onExport }: { onExport: () => void }) {
         <button className="ed-btn" onClick={() => ed.addBlurOverlay(ed.playhead)}>
           ◍ Blur
         </button>
+        <button className="ed-btn" onClick={() => ed.addShapeOverlay(ed.playhead, "rect")}>
+          ▢ Highlight
+        </button>
+        <button className="ed-btn" onClick={() => ed.addShapeOverlay(ed.playhead, "arrow")}>
+          ↗ Arrow
+        </button>
+        <button className="ed-btn" onClick={() => ed.addZoomOverlay(ed.playhead)}>
+          🔎 Zoom
+        </button>
+        <button
+          className="ed-btn"
+          disabled={!ed.media.some((m) => m.kind !== "audio")}
+          onClick={() => {
+            const pick = ed.media.find((m) => m.kind !== "audio");
+            if (pick) ed.addMediaOverlay(pick.id, ed.playhead);
+          }}
+          title="Adds first visual media as PIP. You can change media in Properties panel."
+        >
+          ◰ PIP
+        </button>
         <button className="ed-btn primary" onClick={onExport}>
           ⬇ Export
         </button>
